@@ -25,15 +25,18 @@ playButton.addEventListener('click', () => {
     const mainGraph = { nodes, connections };
     const sortedNodes = topSort(mainGraph.nodes, mainGraph.connections);
 
+    const startTime = performance.now();
     for (let i = 0; i < bufferSize; i++) {
         const t = i / sampleRate;
         const initialValues = { 'time': t }; // Special value for time
         const output = evaluateSortedGraph(mainGraph, initialValues, sortedNodes);
         channelData[i] = output;
     }
+    const endTime = performance.now();
+    const generationTime = endTime - startTime;
 
     applyLimiter(channelData);
-    updateBufferInfo(channelData);
+    updateBufferInfo(channelData, generationTime);
 
     audioSource = audioContext.createBufferSource();
     audioSource.buffer = buffer;
@@ -46,7 +49,7 @@ playButton.addEventListener('click', () => {
     playButton.classList.add('stop');
 });
 
-function updateBufferInfo(buffer) {
+function updateBufferInfo(buffer, generationTime) {
     let min = buffer[0];
     let max = buffer[0];
     let sumOfSquares = 0;
@@ -64,6 +67,9 @@ function updateBufferInfo(buffer) {
     document.getElementById('max-amp').textContent = max.toFixed(4);
     document.getElementById('min-amp').textContent = min.toFixed(4);
     document.getElementById('rms-power').textContent = rms.toFixed(4);
+    if (generationTime !== undefined) {
+        document.getElementById('generation-time').textContent = generationTime.toFixed(2);
+    }
 }
 
 function applyLimiter(buffer) {

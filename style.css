@@ -70,6 +70,7 @@ body, html {
     -webkit-user-select: none;
     -moz-user-select: none;
     -ms-user-select: none;
+    overflow-y: auto;
 }
 
 #sidebar h2 {
