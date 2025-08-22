@@ -133,6 +133,52 @@ function createSineWaveSubgraph() {
 }
 
 function createNode(type, x, y) {
+    if (type.startsWith('composition_')) {
+        const compName = type.substring('composition_'.length);
+        const savedCompositions = JSON.parse(localStorage.getItem('compositions') || '[]');
+        const compTemplate = savedCompositions.find(c => c.name === compName);
+
+        if (compTemplate) {
+            // Create a deep copy with new unique IDs
+            const idMap = new Map();
+            const getNewId = (oldId) => {
+                if (!idMap.has(oldId)) {
+                    idMap.set(oldId, Date.now() + Math.random());
+                }
+                return idMap.get(oldId);
+            };
+
+            const newSubgraphNodes = compTemplate.nodes.map(n => ({
+                ...n,
+                id: getNewId(n.id)
+            }));
+            const newSubgraphConnections = compTemplate.connections.map(c => ({
+                ...c,
+                fromNode: getNewId(c.fromNode),
+                toNode: getNewId(c.toNode)
+            }));
+
+            const node = {
+                id: Date.now(),
+                type: type,
+                x: x,
+                y: y,
+                width: 200,
+                height: 40 + Math.max(compTemplate.inputs.length, compTemplate.outputs.length) * 20 + 20,
+                inputs: compTemplate.inputs,
+                outputs: compTemplate.outputs,
+                isComposite: true,
+                subgraph: {
+                    nodes: newSubgraphNodes,
+                    connections: newSubgraphConnections
+                }
+            };
+            nodes.push(node);
+            draw();
+            return;
+        }
+    }
+
     const node = {
         id: Date.now(),
         type: type,
@@ -233,8 +279,8 @@ function draw() {
 
 function drawNode(node) {
     ctx.fillStyle = '#f0f0f0';
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = node.selected ? 'blue' : '#000';
+    ctx.lineWidth = node.selected ? 2 : 1;
     ctx.beginPath();
     ctx.rect(node.x, node.y, node.width, node.height);
     ctx.fill();
@@ -429,6 +475,15 @@ function handleMouseDown(worldX, worldY, screenX, screenY) {
         }
     }
 
+    if (isSelectMode) {
+        const node = getNodeAt(worldX, worldY);
+        if (node) {
+            node.selected = !node.selected;
+            draw();
+        }
+        return;
+    }
+
     // Clear any previous state
     draggingNode = null;
     isPotentialDrag = false;
@@ -545,6 +600,19 @@ function handleMouseUp(worldX, worldY) {
 let audioContext = null;
 let audioSource = null;
 let isPlaying = false;
+let isSelectMode = false;
+
+const selectModeButton = document.getElementById('select-mode-button');
+selectModeButton.addEventListener('click', () => {
+    isSelectMode = !isSelectMode;
+    selectModeButton.classList.toggle('active', isSelectMode);
+
+    // Unselect all nodes when exiting select mode
+    if (!isSelectMode) {
+        nodes.forEach(n => n.selected = false);
+        draw();
+    }
+});
 
 const playButton = document.getElementById('play-button');
 const playIcon = document.createElement('div');
@@ -593,11 +661,12 @@ playButton.addEventListener('click', () => {
     playButton.classList.add('stop');
 });
 
-const bufferInfoButton = document.getElementById('buffer-info-button');
+const menuBufferInfo = document.getElementById('menu-buffer-info');
 const bufferInfoModal = document.getElementById('buffer-info-modal');
 const closeModalButton = document.querySelector('.close-button');
 
-bufferInfoButton.addEventListener('click', () => {
+menuBufferInfo.addEventListener('click', (e) => {
+    e.preventDefault();
     bufferInfoModal.classList.remove('hidden');
 });
 
@@ -610,6 +679,131 @@ window.addEventListener('click', (e) => {
         bufferInfoModal.classList.add('hidden');
     }
 });
+
+const menuSaveComposition = document.getElementById('menu-save-composition');
+menuSaveComposition.addEventListener('click', (e) => {
+    e.preventDefault();
+    saveSelectedComposition();
+});
+
+function saveSelectedComposition() {
+    const selectedNodes = nodes.filter(n => n.selected);
+    if (selectedNodes.length === 0) {
+        alert("No nodes selected.");
+        return;
+    }
+
+    const name = prompt("Enter a name for the composition:");
+    if (!name) return;
+
+    const composition = serializeComposition(selectedNodes, name);
+
+    // Save to localStorage
+    const savedCompositions = JSON.parse(localStorage.getItem('compositions') || '[]');
+    savedCompositions.push(composition);
+    localStorage.setItem('compositions', JSON.stringify(savedCompositions));
+
+    addCompositionToSidebar(composition);
+}
+
+function serializeComposition(selectedNodes, name) {
+    const nodeCopies = JSON.parse(JSON.stringify(selectedNodes));
+    const nodeIds = new Set(nodeCopies.map(n => n.id));
+
+    // Find internal connections
+    const internalConnections = connections.filter(c => nodeIds.has(c.fromNode) && nodeIds.has(c.toNode));
+
+    // Normalize positions
+    let minX = Infinity;
+    let minY = Infinity;
+    nodeCopies.forEach(n => {
+        if (n.x < minX) minX = n.x;
+        if (n.y < minY) minY = n.y;
+    });
+    nodeCopies.forEach(n => {
+        n.x -= minX;
+        n.y -= minY;
+    });
+
+    const inputs = [];
+    const outputs = [];
+    const internalConnectionTargets = new Set(internalConnections.map(c => `${c.toNode}:${c.toInput}`));
+    const internalConnectionSources = new Set(internalConnections.map(c => `${c.fromNode}:${c.fromOutput}`));
+
+    nodeCopies.forEach(n => {
+        n.inputs.forEach((input, i) => {
+            if (!internalConnectionTargets.has(`${n.id}:${i}`)) {
+                inputs.push({ name: `${n.type}_in_${i}`, mapsTo: { nodeId: n.id, inputIndex: i } });
+            }
+        });
+        n.outputs.forEach((output, i) => {
+            if (!internalConnectionSources.has(`${n.id}:${i}`)) {
+                outputs.push({ name: `${n.type}_out_${i}`, mapsTo: { nodeId: n.id, outputIndex: i } });
+            }
+        });
+    });
+
+    return {
+        name: name,
+        nodes: nodeCopies,
+        connections: internalConnections,
+        inputs: inputs,
+        outputs: outputs
+    };
+}
+
+function addCompositionToSidebar(composition) {
+    const sidebar = document.getElementById('sidebar');
+    const nodeDiv = document.createElement('div');
+    nodeDiv.className = 'node';
+    nodeDiv.setAttribute('draggable', 'true');
+    nodeDiv.dataset.type = `composition_${composition.name}`;
+    nodeDiv.textContent = composition.name;
+
+    // Add drag listener
+    nodeDiv.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('text/plain', e.target.dataset.type);
+    });
+
+    // Add touch listener
+    nodeDiv.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        const type = e.target.dataset.type;
+        const touch = e.touches[0];
+        const ghostNode = e.target.cloneNode(true);
+        ghostNode.style.position = 'absolute';
+        ghostNode.style.left = (touch.clientX - 50) + 'px';
+        ghostNode.style.top = (touch.clientY - 25) + 'px';
+        ghostNode.id = 'ghost-node';
+        document.body.appendChild(ghostNode);
+
+        const touchMove = (e) => {
+            const touch = e.touches[0];
+            ghostNode.style.left = (touch.clientX - 50) + 'px';
+            ghostNode.style.top = (touch.clientY - 25) + 'px';
+        };
+
+        const touchEnd = (e) => {
+            document.removeEventListener('touchmove', touchMove);
+            document.removeEventListener('touchend', touchEnd);
+            document.body.removeChild(ghostNode);
+            const touch = e.changedTouches[0];
+            const canvasRect = canvas.getBoundingClientRect();
+            if (touch.clientX > canvasRect.left && touch.clientX < canvasRect.right &&
+                touch.clientY > canvasRect.top && touch.clientY < canvasRect.bottom) {
+                const x = touch.clientX - canvas.offsetLeft;
+                const y = touch.clientY - canvas.offsetTop;
+                const worldCoords = screenToWorld(x, y);
+                createNode(type, worldCoords.x, worldCoords.y);
+            }
+        };
+
+        document.addEventListener('touchmove', touchMove);
+        document.addEventListener('touchend', touchEnd);
+    });
+
+    sidebar.appendChild(nodeDiv);
+}
 
 function updateBufferInfo(buffer) {
     let min = buffer[0];
@@ -828,4 +1022,11 @@ function deleteNode(nodeId) {
     draw();
 }
 
+function loadCompositionsFromStorage() {
+    const savedCompositions = JSON.parse(localStorage.getItem('compositions') || '[]');
+    savedCompositions.forEach(comp => addCompositionToSidebar(comp));
+}
+
+// Initial setup
+loadCompositionsFromStorage();
 resizeCanvas();
