@@ -23,11 +23,12 @@ playButton.addEventListener('click', () => {
     const channelData = buffer.getChannelData(0);
 
     const mainGraph = { nodes, connections };
+    const sortedNodes = topSort(mainGraph.nodes, mainGraph.connections);
 
     for (let i = 0; i < bufferSize; i++) {
         const t = i / sampleRate;
         const initialValues = { 'time': t }; // Special value for time
-        const output = evaluateGraph(mainGraph, initialValues);
+        const output = evaluateSortedGraph(mainGraph, initialValues, sortedNodes);
         channelData[i] = output;
     }
 
@@ -85,6 +86,10 @@ function applyLimiter(buffer) {
 
 function evaluateGraph(graph, initialInputs) {
     const sortedNodes = topSort(graph.nodes, graph.connections);
+    return evaluateSortedGraph(graph, initialInputs, sortedNodes);
+}
+
+function evaluateSortedGraph(graph, initialInputs, sortedNodes) {
     const nodeValues = new Map();
 
     for (const node of sortedNodes) {
