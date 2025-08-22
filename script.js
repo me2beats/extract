@@ -11,6 +11,11 @@ let panY = 0;
 let isPanning = false;
 let lastMouseX = 0;
 let lastMouseY = 0;
+let potentialDragNode = null;
+let isPotentialDrag = false;
+let startX = 0;
+let startY = 0;
+const DRAG_THRESHOLD = 5;
 
 function resizeCanvas() {
     canvas.width = window.innerWidth - 170;
@@ -309,7 +314,6 @@ let touchTimeout = null;
 
 canvas.addEventListener('touchstart', (e) => {
     e.preventDefault();
-    touchStartTime = Date.now();
     const touch = e.touches[0];
     const x = touch.clientX - canvas.offsetLeft;
     const y = touch.clientY - canvas.offsetTop;
@@ -317,7 +321,7 @@ canvas.addEventListener('touchstart', (e) => {
     touchTimeout = setTimeout(() => {
         const worldCoords = screenToWorld(x, y);
         showNodeValueInput(worldCoords.x, worldCoords.y);
-        touchTimeout = null;
+        touchTimeout = null; // Prevent it from being cleared again
     }, 500);
 
     const worldCoords = screenToWorld(x, y);
@@ -326,10 +330,6 @@ canvas.addEventListener('touchstart', (e) => {
 
 canvas.addEventListener('touchmove', (e) => {
     e.preventDefault();
-    if (touchTimeout) {
-        clearTimeout(touchTimeout);
-        touchTimeout = null;
-    }
     const touch = e.touches[0];
     const x = touch.clientX - canvas.offsetLeft;
     const y = touch.clientY - canvas.offsetTop;
@@ -339,10 +339,6 @@ canvas.addEventListener('touchmove', (e) => {
 
 canvas.addEventListener('touchend', (e) => {
     e.preventDefault();
-    if (touchTimeout) {
-        clearTimeout(touchTimeout);
-        touchTimeout = null;
-    }
     const touch = e.changedTouches[0];
     const x = touch.clientX - canvas.offsetLeft;
     const y = touch.clientY - canvas.offsetTop;
@@ -351,22 +347,27 @@ canvas.addEventListener('touchend', (e) => {
 });
 
 function handleMouseDown(worldX, worldY, screenX, screenY) {
+    // Clear any previous state
+    draggingNode = null;
+    isPotentialDrag = false;
+
     const connector = getConnectorAt(worldX, worldY);
     if (connector && connector.type === 'output') {
         connectingNode = {
             fromNode: connector.node,
             fromConnector: connector.connector,
             fromOutputIndex: connector.index,
-            x: screenX, // Store screen coords for drawing line
+            x: screenX,
             y: screenY
         };
         return;
     }
 
-    draggingNode = getNodeAt(worldX, worldY);
-    if (draggingNode) {
-        dragOffsetX = worldX - draggingNode.x;
-        dragOffsetY = worldY - draggingNode.y;
+    potentialDragNode = getNodeAt(worldX, worldY);
+    if (potentialDragNode) {
+        isPotentialDrag = true;
+        startX = screenX;
+        startY = screenY;
     } else {
         isPanning = true;
         lastMouseX = screenX;
@@ -375,6 +376,23 @@ function handleMouseDown(worldX, worldY, screenX, screenY) {
 }
 
 function handleMouseMove(worldX, worldY, screenX, screenY) {
+    if (isPotentialDrag) {
+        const dx = screenX - startX;
+        const dy = screenY - startY;
+        if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
+            isPotentialDrag = false;
+            draggingNode = potentialDragNode;
+            potentialDragNode = null;
+            dragOffsetX = worldX - draggingNode.x;
+            dragOffsetY = worldY - draggingNode.y;
+
+            if (touchTimeout) {
+                clearTimeout(touchTimeout);
+                touchTimeout = null;
+            }
+        }
+    }
+
     if (draggingNode) {
         draggingNode.x = worldX - dragOffsetX;
         draggingNode.y = worldY - dragOffsetY;
@@ -395,6 +413,11 @@ function handleMouseMove(worldX, worldY, screenX, screenY) {
 }
 
 function handleMouseUp(worldX, worldY) {
+    if (touchTimeout) {
+        clearTimeout(touchTimeout);
+        touchTimeout = null;
+    }
+
     if (connectingNode) {
         const connector = getConnectorAt(worldX, worldY);
         if (connector && connector.type === 'input') {
@@ -408,8 +431,11 @@ function handleMouseUp(worldX, worldY) {
         connectingNode = null;
         draw();
     }
+
     draggingNode = null;
     isPanning = false;
+    isPotentialDrag = false;
+    potentialDragNode = null;
 }
 
 let audioContext = null;
