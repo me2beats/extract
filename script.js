@@ -6,9 +6,14 @@ let draggingNode = null;
 let dragOffsetX = 0;
 let dragOffsetY = 0;
 let connectingNode = null;
+let panX = 0;
+let panY = 0;
+let isPanning = false;
+let lastMouseX = 0;
+let lastMouseY = 0;
 
 function resizeCanvas() {
-    canvas.width = window.innerWidth - 220;
+    canvas.width = window.innerWidth - 170;
     canvas.height = window.innerHeight;
     draw();
 }
@@ -70,56 +75,6 @@ canvas.addEventListener('drop', (e) => {
     createNode(type, x, y);
 });
 
-function createNode(type, x, y) {
-    const node = {
-        id: Date.now(),
-        type: type,
-        x: x,
-        y: y,
-        width: 150,
-        height: 80,
-        inputs: [],
-        outputs: [],
-        value: 440, // Default frequency
-    };
-
-    switch (type) {
-        case 'time':
-            node.outputs.push({ name: 't' });
-            break;
-        case 'frequency':
-            node.outputs.push({ name: 'freq' });
-            break;
-        case 'output':
-            node.inputs.push({ name: 'in' });
-            break;
-        case 'constant':
-            node.outputs.push({ name: 'out' });
-            node.value = 1; // Default value
-            break;
-        case 'add':
-            node.inputs.push({ name: 'in1' });
-            node.inputs.push({ name: 'in2' });
-            node.outputs.push({ name: 'out' });
-            break;
-        case 'multiply':
-            node.inputs.push({ name: 'in1' });
-            node.inputs.push({ name: 'in2' });
-            node.outputs.push({ name: 'out' });
-            break;
-        case 'sin':
-            node.inputs.push({ name: 'in' });
-            node.outputs.push({ name: 'out' });
-            break;
-        case 'sine-wave':
-            node.inputs.push({ name: 'freq' });
-            node.inputs.push({ name: 'time' });
-            node.outputs.push({ name: 'out' });
-            node.isComposite = true;
-            node.subgraph = createSineWaveSubgraph();
-            break;
-    }
-}
 
 function createSineWaveSubgraph() {
     const subgraphNodes = [];
@@ -209,14 +164,19 @@ function createNode(type, x, y) {
 }
 
 function draw() {
+    ctx.save();
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.translate(panX, panY);
+
     drawConnections();
     nodes.forEach(node => {
         drawNode(node);
     });
     if (connectingNode) {
-        drawConnectionToCursor(connectingNode.x, connectingNode.y);
+        const worldCoords = screenToWorld(connectingNode.x, connectingNode.y);
+        drawConnectionToCursor(worldCoords.x, worldCoords.y);
     }
+    ctx.restore();
 }
 
 function drawNode(node) {
@@ -288,19 +248,19 @@ function getNodeAt(x, y) {
     return null;
 }
 
-function getConnectorAt(x, y) {
+function getConnectorAt(worldX, worldY) {
     for (const node of nodes) {
         for (let i = 0; i < node.inputs.length; i++) {
             const input = node.inputs[i];
-            const dist = Math.sqrt(Math.pow(x - input.x, 2) + Math.pow(y - input.y, 2));
-            if (dist < 6) {
+            const dist = Math.sqrt(Math.pow(worldX - input.x, 2) + Math.pow(worldY - input.y, 2));
+            if (dist < 15) {
                 return { node, connector: input, type: 'input', index: i };
             }
         }
         for (let i = 0; i < node.outputs.length; i++) {
             const output = node.outputs[i];
-            const dist = Math.sqrt(Math.pow(x - output.x, 2) + Math.pow(y - output.y, 2));
-            if (dist < 6) {
+            const dist = Math.sqrt(Math.pow(worldX - output.x, 2) + Math.pow(worldY - output.y, 2));
+            if (dist < 15) {
                 return { node, connector: output, type: 'output', index: i };
             }
         }
@@ -308,22 +268,29 @@ function getConnectorAt(x, y) {
     return null;
 }
 
+function screenToWorld(x, y) {
+    return { x: x - panX, y: y - panY };
+}
+
 canvas.addEventListener('mousedown', (e) => {
     const x = e.clientX - canvas.offsetLeft;
     const y = e.clientY - canvas.offsetTop;
-    handleMouseDown(x, y);
+    const worldCoords = screenToWorld(x, y);
+    handleMouseDown(worldCoords.x, worldCoords.y, x, y);
 });
 
 canvas.addEventListener('mousemove', (e) => {
     const x = e.clientX - canvas.offsetLeft;
     const y = e.clientY - canvas.offsetTop;
-    handleMouseMove(x, y);
+    const worldCoords = screenToWorld(x, y);
+    handleMouseMove(worldCoords.x, worldCoords.y, x, y);
 });
 
 canvas.addEventListener('mouseup', (e) => {
     const x = e.clientX - canvas.offsetLeft;
     const y = e.clientY - canvas.offsetTop;
-    handleMouseUp(x, y);
+    const worldCoords = screenToWorld(x, y);
+    handleMouseUp(worldCoords.x, worldCoords.y);
 });
 
 canvas.addEventListener('touchstart', (e) => {
@@ -331,7 +298,8 @@ canvas.addEventListener('touchstart', (e) => {
     const touch = e.touches[0];
     const x = touch.clientX - canvas.offsetLeft;
     const y = touch.clientY - canvas.offsetTop;
-    handleMouseDown(x, y);
+    const worldCoords = screenToWorld(x, y);
+    handleMouseDown(worldCoords.x, worldCoords.y, x, y);
 }, { passive: false });
 
 canvas.addEventListener('touchmove', (e) => {
@@ -350,37 +318,53 @@ canvas.addEventListener('touchend', (e) => {
     handleMouseUp(x, y);
 });
 
-function handleMouseDown(x, y) {
-    const connector = getConnectorAt(x, y);
+function handleMouseDown(worldX, worldY, screenX, screenY) {
+    const connector = getConnectorAt(worldX, worldY);
     if (connector && connector.type === 'output') {
         connectingNode = {
             fromNode: connector.node,
             fromConnector: connector.connector,
-            fromOutputIndex: connector.index
+            fromOutputIndex: connector.index,
+            x: screenX, // Store screen coords for drawing line
+            y: screenY
         };
+        return;
+    }
+
+    draggingNode = getNodeAt(worldX, worldY);
+    if (draggingNode) {
+        dragOffsetX = worldX - draggingNode.x;
+        dragOffsetY = worldY - draggingNode.y;
     } else {
-        draggingNode = getNodeAt(x, y);
-        if (draggingNode) {
-            dragOffsetX = x - draggingNode.x;
-            dragOffsetY = y - draggingNode.y;
-        }
+        isPanning = true;
+        lastMouseX = screenX;
+        lastMouseY = screenY;
     }
 }
 
-function handleMouseMove(x, y) {
+function handleMouseMove(worldX, worldY, screenX, screenY) {
     if (draggingNode) {
-        draggingNode.x = x - dragOffsetX;
-        draggingNode.y = y - dragOffsetY;
+        draggingNode.x = worldX - dragOffsetX;
+        draggingNode.y = worldY - dragOffsetY;
         draw();
     } else if (connectingNode) {
+        connectingNode.x = screenX;
+        connectingNode.y = screenY;
         draw();
-        drawConnectionToCursor(x, y);
+    } else if (isPanning) {
+        const dx = screenX - lastMouseX;
+        const dy = screenY - lastMouseY;
+        panX += dx;
+        panY += dy;
+        lastMouseX = screenX;
+        lastMouseY = screenY;
+        draw();
     }
 }
 
-function handleMouseUp(x, y) {
+function handleMouseUp(worldX, worldY) {
     if (connectingNode) {
-        const connector = getConnectorAt(x, y);
+        const connector = getConnectorAt(worldX, worldY);
         if (connector && connector.type === 'input') {
             connections.push({
                 fromNode: connectingNode.fromNode.id,
@@ -393,13 +377,27 @@ function handleMouseUp(x, y) {
         draw();
     }
     draggingNode = null;
+    isPanning = false;
 }
+
+let audioContext = null;
+let audioSource = null;
+let isPlaying = false;
 
 const playButton = document.getElementById('play-button');
 playButton.addEventListener('click', () => {
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    if (isPlaying) {
+        if (audioSource) {
+            audioSource.stop();
+        }
+        isPlaying = false;
+        playButton.textContent = 'Play';
+        return;
+    }
+
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
     const sampleRate = audioContext.sampleRate;
-    const duration = 2;
+    const duration = 1; // 1 second buffer
     const bufferSize = sampleRate * duration;
     const buffer = audioContext.createBuffer(1, bufferSize, sampleRate);
     const channelData = buffer.getChannelData(0);
@@ -413,11 +411,33 @@ playButton.addEventListener('click', () => {
         channelData[i] = output;
     }
 
-    const source = audioContext.createBufferSource();
-    source.buffer = buffer;
-    source.connect(audioContext.destination);
-    source.start();
+    applyLimiter(channelData);
+
+    audioSource = audioContext.createBufferSource();
+    audioSource.buffer = buffer;
+    audioSource.loop = true;
+    audioSource.connect(audioContext.destination);
+    audioSource.start();
+
+    isPlaying = true;
+    playButton.textContent = 'Stop';
 });
+
+function applyLimiter(buffer) {
+    let max = 0;
+    for (let i = 0; i < buffer.length; i++) {
+        if (Math.abs(buffer[i]) > max) {
+            max = Math.abs(buffer[i]);
+        }
+    }
+
+    if (max > 1.0) {
+        const gain = 1.0 / max;
+        for (let i = 0; i < buffer.length; i++) {
+            buffer[i] *= gain;
+        }
+    }
+}
 
 function evaluateGraph(graph, initialInputs) {
     const sortedNodes = topSort(graph.nodes, graph.connections);
@@ -429,7 +449,7 @@ function evaluateGraph(graph, initialInputs) {
             nodeValues.set(node.id, initialInputs[node.id]);
             continue;
         } else {
-           inputs = getInputsForNode(node, graph.connections, nodeValues, node.type === 'subgraph' ? graph.nodes : nodes);
+           inputs = getInputsForNode(node, graph.connections, nodeValues, graph.nodes);
         }
 
         if (node.isComposite) {
@@ -472,15 +492,15 @@ function evaluateGraph(graph, initialInputs) {
     return outputNode ? nodeValues.get(outputNode.id) : 0;
 }
 
-function getInputsForNode(node, connections, nodeValues) {
+function getInputsForNode(node, connections, nodeValues, allNodes) {
     const inputs = [];
     const inputConnections = connections.filter(c => c.toNode === node.id);
     for (let i = 0; i < node.inputs.length; i++) {
         const conn = inputConnections.find(c => c.toInput === i);
         if (conn) {
-            const fromNode = nodes.find(n => n.id === conn.fromNode);
+            const fromNode = allNodes.find(n => n.id === conn.fromNode);
             const outputIndex = conn.fromOutput; // We'll assume one output for now
-            inputs.push(nodeValues.get(fromNode.id));
+            if(fromNode) inputs.push(nodeValues.get(fromNode.id));
         } else {
             inputs.push(0);
         }
