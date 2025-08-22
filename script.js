@@ -33,7 +33,7 @@ let startY = 0;
 const DRAG_THRESHOLD = 5;
 
 function resizeCanvas() {
-    canvas.width = window.innerWidth - 170;
+    canvas.width = window.innerWidth - 140;
     canvas.height = window.innerHeight;
     draw();
 }
@@ -211,6 +211,24 @@ function drawNode(node) {
     ctx.fill();
     ctx.stroke();
 
+    // Draw delete button
+    const deleteButtonSize = 15;
+    node.deleteButton = {
+        x: node.x + node.width - deleteButtonSize - 5,
+        y: node.y + 5,
+        width: deleteButtonSize,
+        height: deleteButtonSize
+    };
+    ctx.strokeStyle = 'red';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(node.deleteButton.x, node.deleteButton.y);
+    ctx.lineTo(node.deleteButton.x + deleteButtonSize, node.deleteButton.y + deleteButtonSize);
+    ctx.moveTo(node.deleteButton.x + deleteButtonSize, node.deleteButton.y);
+    ctx.lineTo(node.deleteButton.x, node.deleteButton.y + deleteButtonSize);
+    ctx.stroke();
+
+
     ctx.fillStyle = '#000';
     ctx.fillText(node.type, node.x + 10, node.y + 20);
 
@@ -365,19 +383,58 @@ canvas.addEventListener('touchend', (e) => {
 });
 
 function handleMouseDown(worldX, worldY, screenX, screenY) {
+    // Check if a delete button was clicked
+    for (const node of nodes) {
+        if (node.deleteButton && worldX > node.deleteButton.x && worldX < node.deleteButton.x + node.deleteButton.width &&
+            worldY > node.deleteButton.y && worldY < node.deleteButton.y + node.deleteButton.height) {
+
+            if (node.id === 'output') {
+                alert("The Output node cannot be deleted.");
+                return;
+            }
+
+            if (window.confirm(`Are you sure you want to delete the ${node.type} node?`)) {
+                deleteNode(node.id);
+            }
+            return; // Stop further processing
+        }
+    }
+
     // Clear any previous state
     draggingNode = null;
     isPotentialDrag = false;
 
     const connector = getConnectorAt(worldX, worldY);
-    if (connector && connector.type === 'output') {
-        connectingNode = {
-            fromNode: connector.node,
-            fromConnector: connector.connector,
-            fromOutputIndex: connector.index,
-            x: screenX,
-            y: screenY
-        };
+    if (connector) {
+        if (connector.type === 'output') {
+            connectingNode = {
+                fromNode: connector.node,
+                fromConnector: connector.connector,
+                fromOutputIndex: connector.index,
+                x: screenX,
+                y: screenY
+            };
+        } else { // It's an input connector
+            const existingConnectionIndex = connections.findIndex(c => c.toNode === connector.node.id && c.toInput === connector.index);
+            if (existingConnectionIndex !== -1) {
+                const conn = connections[existingConnectionIndex];
+                const sourceNode = nodes.find(n => n.id === conn.fromNode);
+                const sourceConnector = sourceNode.outputs[conn.fromOutput];
+
+                // Remove the old connection
+                connections.splice(existingConnectionIndex, 1);
+
+                // Start a new connection from the original source
+                connectingNode = {
+                    fromNode: sourceNode,
+                    fromConnector: sourceConnector,
+                    fromOutputIndex: conn.fromOutput,
+                    x: screenX,
+                    y: screenY
+                };
+                draw();
+            }
+        }
         return;
     }
 
@@ -705,6 +762,23 @@ function showNodeValueInput(worldX, worldY) {
     document.body.appendChild(input);
     input.focus();
     input.select();
+}
+
+function deleteNode(nodeId) {
+    const nodeIndex = nodes.findIndex(n => n.id === nodeId);
+    if (nodeIndex === -1) return;
+
+    // Remove the node
+    nodes.splice(nodeIndex, 1);
+
+    // Remove all connections to and from the node
+    for (let i = connections.length - 1; i >= 0; i--) {
+        if (connections[i].fromNode === nodeId || connections[i].toNode === nodeId) {
+            connections.splice(i, 1);
+        }
+    }
+
+    draw();
 }
 
 resizeCanvas();
