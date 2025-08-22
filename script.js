@@ -307,7 +307,8 @@ canvas.addEventListener('touchmove', (e) => {
     const touch = e.touches[0];
     const x = touch.clientX - canvas.offsetLeft;
     const y = touch.clientY - canvas.offsetTop;
-    handleMouseMove(x, y);
+    const worldCoords = screenToWorld(x, y);
+    handleMouseMove(worldCoords.x, worldCoords.y, x, y);
 }, { passive: false });
 
 canvas.addEventListener('touchend', (e) => {
@@ -315,7 +316,8 @@ canvas.addEventListener('touchend', (e) => {
     const touch = e.changedTouches[0];
     const x = touch.clientX - canvas.offsetLeft;
     const y = touch.clientY - canvas.offsetTop;
-    handleMouseUp(x, y);
+    const worldCoords = screenToWorld(x, y);
+    handleMouseUp(worldCoords.x, worldCoords.y);
 });
 
 function handleMouseDown(worldX, worldY, screenX, screenY) {

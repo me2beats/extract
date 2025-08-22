@@ -39,3 +39,9 @@ body, html {
     flex-grow: 1;
     background: #fff;
 }
+
+#play-button {
+    margin-top: 10px;
+    width: 100%;
+    padding: 10px;
+}
