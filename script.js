@@ -74,7 +74,8 @@ sidebarNodes.forEach(node => {
                 touch.clientY > canvasRect.top && touch.clientY < canvasRect.bottom) {
                 const x = touch.clientX - canvas.offsetLeft;
                 const y = touch.clientY - canvas.offsetTop;
-                createNode(type, x, y);
+                const worldCoords = screenToWorld(x, y);
+                createNode(type, worldCoords.x, worldCoords.y);
             }
         };
 
@@ -92,7 +93,8 @@ canvas.addEventListener('drop', (e) => {
     const type = e.dataTransfer.getData('text/plain');
     const x = e.clientX - canvas.offsetLeft;
     const y = e.clientY - canvas.offsetTop;
-    createNode(type, x, y);
+    const worldCoords = screenToWorld(x, y);
+    createNode(type, worldCoords.x, worldCoords.y);
 });
 
 
@@ -179,6 +181,33 @@ function createNode(type, x, y) {
             node.subgraph = createSineWaveSubgraph();
             break;
         case 'random':
+            node.outputs.push({ name: 'out' });
+            break;
+        case 'pi':
+            node.outputs.push({ name: 'out' });
+            node.value = Math.PI;
+            break;
+        case 'mod':
+            node.inputs.push({ name: 'a' });
+            node.inputs.push({ name: 'b' });
+            node.outputs.push({ name: 'out' });
+            break;
+        case 'sign':
+            node.inputs.push({ name: 'in' });
+            node.outputs.push({ name: 'out' });
+            break;
+        case 'arcsin':
+            node.inputs.push({ name: 'in' });
+            node.outputs.push({ name: 'out' });
+            break;
+        case 'min':
+            node.inputs.push({ name: 'a' });
+            node.inputs.push({ name: 'b' });
+            node.outputs.push({ name: 'out' });
+            break;
+        case 'max':
+            node.inputs.push({ name: 'a' });
+            node.inputs.push({ name: 'b' });
             node.outputs.push({ name: 'out' });
             break;
     }
@@ -662,6 +691,24 @@ function evaluateGraph(graph, initialInputs) {
                     break;
                 case 'random':
                     nodeValues.set(node.id, (Math.random() * 2) - 1);
+                    break;
+                case 'pi':
+                    nodeValues.set(node.id, Math.PI);
+                    break;
+                case 'mod':
+                    nodeValues.set(node.id, (inputs[0] || 0) % (inputs[1] || 1)); // Mod by 1 to avoid division by zero
+                    break;
+                case 'sign':
+                    nodeValues.set(node.id, Math.sign(inputs[0] || 0));
+                    break;
+                case 'arcsin':
+                    nodeValues.set(node.id, Math.asin(inputs[0] || 0));
+                    break;
+                case 'min':
+                    nodeValues.set(node.id, Math.min(inputs[0] || 0, inputs[1] || 0));
+                    break;
+                case 'max':
+                    nodeValues.set(node.id, Math.max(inputs[0] || 0, inputs[1] || 0));
                     break;
                 case 'subgraph-output':
                     return inputs[0] || 0;
