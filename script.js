@@ -604,7 +604,7 @@ function evaluateGraph(graph, initialInputs) {
                     nodeValues.set(node.id, Math.sin(inputs[0] || 0));
                     break;
                 case 'random':
-                    nodeValues.set(node.id, Math.random());
+                    nodeValues.set(node.id, (Math.random() * 2) - 1);
                     break;
                 case 'subgraph-output':
                     return inputs[0] || 0;
