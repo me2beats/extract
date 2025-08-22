@@ -470,11 +470,13 @@ function applyLimiter(buffer) {
         }
     }
 
+    let gain = 0.5; // Reduce volume to 50%
     if (max > 1.0) {
-        const gain = 1.0 / max;
-        for (let i = 0; i < buffer.length; i++) {
-            buffer[i] *= gain;
-        }
+        gain /= max; // Apply limiting and volume reduction in one step
+    }
+
+    for (let i = 0; i < buffer.length; i++) {
+        buffer[i] *= gain;
     }
 }
 
