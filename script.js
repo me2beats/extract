@@ -191,6 +191,10 @@ function drawNode(node) {
     ctx.fillStyle = '#000';
     ctx.fillText(node.type, node.x + 10, node.y + 20);
 
+    if (node.type === 'constant' || node.type === 'frequency') {
+        ctx.fillText(node.value, node.x + 10, node.y + 60);
+    }
+
     // Draw inputs
     node.inputs.forEach((input, i) => {
         input.x = node.x;
@@ -293,17 +297,39 @@ canvas.addEventListener('mouseup', (e) => {
     handleMouseUp(worldCoords.x, worldCoords.y);
 });
 
+canvas.addEventListener('dblclick', (e) => {
+    const x = e.clientX - canvas.offsetLeft;
+    const y = e.clientY - canvas.offsetTop;
+    const worldCoords = screenToWorld(x, y);
+    showNodeValueInput(worldCoords.x, worldCoords.y);
+});
+
+let touchStartTime = 0;
+let touchTimeout = null;
+
 canvas.addEventListener('touchstart', (e) => {
     e.preventDefault();
+    touchStartTime = Date.now();
     const touch = e.touches[0];
     const x = touch.clientX - canvas.offsetLeft;
     const y = touch.clientY - canvas.offsetTop;
+
+    touchTimeout = setTimeout(() => {
+        const worldCoords = screenToWorld(x, y);
+        showNodeValueInput(worldCoords.x, worldCoords.y);
+        touchTimeout = null;
+    }, 500);
+
     const worldCoords = screenToWorld(x, y);
     handleMouseDown(worldCoords.x, worldCoords.y, x, y);
 }, { passive: false });
 
 canvas.addEventListener('touchmove', (e) => {
     e.preventDefault();
+    if (touchTimeout) {
+        clearTimeout(touchTimeout);
+        touchTimeout = null;
+    }
     const touch = e.touches[0];
     const x = touch.clientX - canvas.offsetLeft;
     const y = touch.clientY - canvas.offsetTop;
@@ -313,6 +339,10 @@ canvas.addEventListener('touchmove', (e) => {
 
 canvas.addEventListener('touchend', (e) => {
     e.preventDefault();
+    if (touchTimeout) {
+        clearTimeout(touchTimeout);
+        touchTimeout = null;
+    }
     const touch = e.changedTouches[0];
     const x = touch.clientX - canvas.offsetLeft;
     const y = touch.clientY - canvas.offsetTop;
@@ -387,13 +417,19 @@ let audioSource = null;
 let isPlaying = false;
 
 const playButton = document.getElementById('play-button');
+const playIcon = document.createElement('div');
+playIcon.className = 'icon';
+playButton.appendChild(playIcon);
+playButton.classList.add('play');
+
 playButton.addEventListener('click', () => {
     if (isPlaying) {
         if (audioSource) {
             audioSource.stop();
         }
         isPlaying = false;
-        playButton.textContent = 'Play';
+        playButton.classList.remove('stop');
+        playButton.classList.add('play');
         return;
     }
 
@@ -422,7 +458,8 @@ playButton.addEventListener('click', () => {
     audioSource.start();
 
     isPlaying = true;
-    playButton.textContent = 'Stop';
+    playButton.classList.remove('play');
+    playButton.classList.add('stop');
 });
 
 function applyLimiter(buffer) {
@@ -547,5 +584,39 @@ function topSort(nodes, connections) {
     return sorted;
 }
 
+function showNodeValueInput(worldX, worldY) {
+    const node = getNodeAt(worldX, worldY);
+    if (!node || (node.type !== 'constant' && node.type !== 'frequency')) {
+        return;
+    }
+
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.value = node.value;
+    input.style.position = 'absolute';
+    input.style.left = (node.x + panX + 10) + 'px';
+    input.style.top = (node.y + panY + 40) + 'px';
+    input.style.width = (node.width - 20) + 'px';
+
+    const finishEditing = () => {
+        const value = parseFloat(input.value);
+        if (!isNaN(value)) {
+            node.value = value;
+        }
+        document.body.removeChild(input);
+        draw();
+    };
+
+    input.addEventListener('blur', finishEditing);
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            finishEditing();
+        }
+    });
+
+    document.body.appendChild(input);
+    input.focus();
+    input.select();
+}
 
 resizeCanvas();

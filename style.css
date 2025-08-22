@@ -40,8 +40,36 @@ body, html {
     background: #fff;
 }
 
+#controls {
+    position: absolute;
+    bottom: 20px;
+    left: 170px; /* sidebar width + some padding */
+    z-index: 10;
+}
+
 #play-button {
-    margin-top: 10px;
-    width: 100%;
-    padding: 10px;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    border: 2px solid #333;
+    background: #fff;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#play-button.play .icon {
+    width: 0;
+    height: 0;
+    border-top: 10px solid transparent;
+    border-bottom: 10px solid transparent;
+    border-left: 18px solid #333;
+    margin-left: 5px;
+}
+
+#play-button.stop .icon {
+    width: 15px;
+    height: 15px;
+    background: #333;
 }
