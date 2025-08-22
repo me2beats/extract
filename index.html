@@ -18,11 +18,22 @@
             <div class="node" draggable="true" data-type="multiply">Multiply</div>
             <div class="node" draggable="true" data-type="sin">Sin</div>
             <div class="node" draggable="true" data-type="sine-wave">Sine Wave</div>
-            <div class="node" draggable="true" data-type="output">Output</div>
+            <div class="node" draggable="true" data-type="random">Random</div>
         </div>
         <canvas id="canvas"></canvas>
         <div id="controls">
             <button id="play-button"></button>
+            <button id="buffer-info-button">Info</button>
+        </div>
+    </div>
+    <div id="buffer-info-modal" class="hidden">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h2>Buffer Analysis</h2>
+            <p><strong>Sample Count:</strong> <span id="sample-count"></span></p>
+            <p><strong>Max Amplitude:</strong> <span id="max-amp"></span></p>
+            <p><strong>Min Amplitude:</strong> <span id="min-amp"></span></p>
+            <p><strong>RMS Power:</strong> <span id="rms-power"></span></p>
         </div>
     </div>
 </body>

@@ -2,6 +2,21 @@ const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const nodes = [];
 const connections = [];
+
+// Create the output node by default
+const outputNode = {
+    id: 'output', // Fixed ID for the permanent output node
+    type: 'output',
+    x: 700,
+    y: 200,
+    width: 150,
+    height: 80,
+    inputs: [{ name: 'in' }],
+    outputs: []
+};
+nodes.push(outputNode);
+
+
 let draggingNode = null;
 let dragOffsetX = 0;
 let dragOffsetY = 0;
@@ -162,6 +177,9 @@ function createNode(type, x, y) {
             node.outputs.push({ name: 'out' });
             node.isComposite = true;
             node.subgraph = createSineWaveSubgraph();
+            break;
+        case 'random':
+            node.outputs.push({ name: 'out' });
             break;
     }
     nodes.push(node);
@@ -476,6 +494,7 @@ playButton.addEventListener('click', () => {
     }
 
     applyLimiter(channelData);
+    updateBufferInfo(channelData);
 
     audioSource = audioContext.createBufferSource();
     audioSource.buffer = buffer;
@@ -487,6 +506,44 @@ playButton.addEventListener('click', () => {
     playButton.classList.remove('play');
     playButton.classList.add('stop');
 });
+
+const bufferInfoButton = document.getElementById('buffer-info-button');
+const bufferInfoModal = document.getElementById('buffer-info-modal');
+const closeModalButton = document.querySelector('.close-button');
+
+bufferInfoButton.addEventListener('click', () => {
+    bufferInfoModal.classList.remove('hidden');
+});
+
+closeModalButton.addEventListener('click', () => {
+    bufferInfoModal.classList.add('hidden');
+});
+
+window.addEventListener('click', (e) => {
+    if (e.target == bufferInfoModal) {
+        bufferInfoModal.classList.add('hidden');
+    }
+});
+
+function updateBufferInfo(buffer) {
+    let min = buffer[0];
+    let max = buffer[0];
+    let sumOfSquares = 0;
+
+    for (let i = 0; i < buffer.length; i++) {
+        const sample = buffer[i];
+        if (sample < min) min = sample;
+        if (sample > max) max = sample;
+        sumOfSquares += sample * sample;
+    }
+
+    const rms = Math.sqrt(sumOfSquares / buffer.length);
+
+    document.getElementById('sample-count').textContent = buffer.length;
+    document.getElementById('max-amp').textContent = max.toFixed(4);
+    document.getElementById('min-amp').textContent = min.toFixed(4);
+    document.getElementById('rms-power').textContent = rms.toFixed(4);
+}
 
 function applyLimiter(buffer) {
     let max = 0;
@@ -545,6 +602,9 @@ function evaluateGraph(graph, initialInputs) {
                     break;
                 case 'sin':
                     nodeValues.set(node.id, Math.sin(inputs[0] || 0));
+                    break;
+                case 'random':
+                    nodeValues.set(node.id, Math.random());
                     break;
                 case 'subgraph-output':
                     return inputs[0] || 0;
