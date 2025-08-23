@@ -74,6 +74,7 @@ function createNode(type, x, y) {
                 }
             };
             nodes.push(node);
+            updateWorkletGraph();
             draw();
             return;
         }
@@ -158,6 +159,7 @@ function createNode(type, x, y) {
             break;
     }
     nodes.push(node);
+    updateWorkletGraph();
     draw();
 }
 
@@ -240,5 +242,6 @@ function deleteNode(nodeId) {
         }
     }
 
+    updateWorkletGraph();
     draw();
 }

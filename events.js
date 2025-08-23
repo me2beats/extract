@@ -249,6 +249,7 @@ function handleMouseUp(worldX, worldY) {
                 toNode: connector.node.id,
                 toInput: connector.index,
             });
+            updateWorkletGraph();
         }
         connectingNode = null;
         draw();

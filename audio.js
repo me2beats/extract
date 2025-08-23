@@ -1,13 +1,37 @@
+let useAudioWorklet = localStorage.getItem('setting-use-worklet') === 'true';
+let workletNode = null;
+
+const workletCheckbox = document.getElementById('setting-use-worklet');
+if (workletCheckbox) {
+    workletCheckbox.checked = useAudioWorklet;
+    workletCheckbox.addEventListener('change', (e) => {
+        useAudioWorklet = e.target.checked;
+        localStorage.setItem('setting-use-worklet', useAudioWorklet);
+        // If it's playing, stop the sound so it can be restarted with the new method
+        if (isPlaying) {
+            playButton.click();
+        }
+    });
+}
+
 const playButton = document.getElementById('play-button');
 const playIcon = document.createElement('div');
 playIcon.className = 'icon';
 playButton.appendChild(playIcon);
 playButton.classList.add('play');
 
-playButton.addEventListener('click', () => {
+playButton.addEventListener('click', async () => {
     if (isPlaying) {
         if (audioSource) {
             audioSource.stop();
+            audioSource = null;
+        }
+        if (workletNode) {
+            workletNode.disconnect();
+            workletNode = null;
+        }
+        if (audioContext && audioContext.state !== 'closed') {
+            await audioContext.close();
         }
         isPlaying = false;
         playButton.classList.remove('stop');
@@ -16,38 +40,61 @@ playButton.addEventListener('click', () => {
     }
 
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    const sampleRate = audioContext.sampleRate;
-    const duration = 1; // 1 second buffer
-    const bufferSize = sampleRate * duration;
-    const buffer = audioContext.createBuffer(1, bufferSize, sampleRate);
-    const channelData = buffer.getChannelData(0);
-
-    const mainGraph = { nodes, connections };
-    const sortedNodes = topSort(mainGraph.nodes, mainGraph.connections);
-
-    const startTime = performance.now();
-    for (let i = 0; i < bufferSize; i++) {
-        const t = i / sampleRate;
-        const initialValues = { 'time': t }; // Special value for time
-        const output = evaluateSortedGraph(mainGraph, initialValues, sortedNodes);
-        channelData[i] = output;
-    }
-    const endTime = performance.now();
-    const generationTime = endTime - startTime;
-
-    applyLimiter(channelData);
-    updateBufferInfo(channelData, generationTime);
-
-    audioSource = audioContext.createBufferSource();
-    audioSource.buffer = buffer;
-    audioSource.loop = true;
-    audioSource.connect(audioContext.destination);
-    audioSource.start();
-
     isPlaying = true;
     playButton.classList.remove('play');
     playButton.classList.add('stop');
+
+    if (useAudioWorklet) {
+        try {
+            await audioContext.audioWorklet.addModule('audio-worklet-processor.js');
+            workletNode = new AudioWorkletNode(audioContext, 'my-audio-processor');
+            workletNode.connect(audioContext.destination);
+            const mainGraph = { nodes, connections };
+            workletNode.port.postMessage({ type: 'update-graph', graph: mainGraph });
+        } catch (e) {
+            console.error('Error with AudioWorklet:', e);
+            isPlaying = false;
+            playButton.classList.remove('stop');
+            playButton.classList.add('play');
+        }
+    } else {
+        // Buffer-based approach (existing logic)
+        const sampleRate = audioContext.sampleRate;
+        const duration = 1; // 1 second buffer
+        const bufferSize = sampleRate * duration;
+        const buffer = audioContext.createBuffer(1, bufferSize, sampleRate);
+        const channelData = buffer.getChannelData(0);
+
+        const mainGraph = { nodes, connections };
+        const sortedNodes = topSort(mainGraph.nodes, mainGraph.connections);
+
+        const startTime = performance.now();
+        for (let i = 0; i < bufferSize; i++) {
+            const t = i / sampleRate;
+            const initialValues = { 'time': t };
+            const output = evaluateSortedGraph(mainGraph, initialValues, sortedNodes);
+            channelData[i] = output;
+        }
+        const endTime = performance.now();
+        const generationTime = endTime - startTime;
+
+        applyLimiter(channelData);
+        updateBufferInfo(channelData, generationTime);
+
+        audioSource = audioContext.createBufferSource();
+        audioSource.buffer = buffer;
+        audioSource.loop = true;
+        audioSource.connect(audioContext.destination);
+        audioSource.start();
+    }
 });
+
+function updateWorkletGraph() {
+    if (workletNode) {
+        const mainGraph = { nodes, connections };
+        workletNode.port.postMessage({ type: 'update-graph', graph: mainGraph });
+    }
+}
 
 function updateBufferInfo(buffer, generationTime) {
     let min = buffer[0];
